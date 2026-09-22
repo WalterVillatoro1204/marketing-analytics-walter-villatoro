@@ -23,5 +23,5 @@ modelo_lr.fit(variable_x,variable_y)
 if st.button("Predecir"):
     resultado = modelo_lr.predict([[gasto]])
 
-# Streamlit muestra un mensaje de exito usando success
-st.success(f"Las ventas proyectadas para una inversion de ${gasto} son: ${resultado[0]}")
+    # Streamlit muestra un mensaje de exito usando success
+    st.success(f"Las ventas proyectadas para una inversion de ${gasto} son: ${resultado[0]}")
