@@ -62,10 +62,16 @@ st.caption("TODO: escriban aquí una frase sobre qué decisión de negocio ayuda
 
 df = load_data()
 
-# TODO: agreguen un slider en la barra lateral para el % de la base a contactar
+# Control interactivo en la barra lateral
 with st.sidebar:
-    st.header("Parámetros")
-    pct_contactar = ...   # <-- reemplacen esto: st.slider(...)
+    st.header("Parámetros de Campaña")
+    pct_contactar = st.slider(
+        "Porcentaje de la base a contactar (%):",
+        min_value=10,
+        max_value=100,
+        value=40,
+        step=10
+    )
 
 train, test = entrenar_t_learner(df, test_size=0.30, seed=42)
 
