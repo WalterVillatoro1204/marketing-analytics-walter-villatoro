@@ -36,8 +36,9 @@ def entrenar_t_learner(df: pd.DataFrame, test_size: float, seed: int):
     # TODO: entrenen el T-learner (dos modelos, igual que en el notebook)
     train_t = train[train["treatment_group"] == "treatment"]
     train_c = train[train["treatment_group"] == "control"]
-    modelo_tratado = ...   # <-- reemplacen esto
-    modelo_control = ...   # <-- reemplacen esto
+    
+    modelo_tratado = LogisticRegression(max_iter=1000).fit(train_t[FEATURES], train_t["responded_60d"])   
+    modelo_control = LogisticRegression(max_iter=1000).fit(train_c[FEATURES], train_c["responded_60d"])
 
     test = test.copy()
     X_test = test[FEATURES]
@@ -67,10 +68,58 @@ with st.sidebar:
 
 train, test = entrenar_t_learner(df, test_size=0.30, seed=42)
 
-# --- TODO: calculen y grafiquen la curva Qini de su T-learner ---
+# --- Métricas principales según el % elegido en el slider ---
+n_c = int(len(test) * pct_contactar / 100)
+idx_sel = test.sort_values("uplift_estimado", ascending=False).head(n_c).index
+valor_por_cliente, n_sel = valor_de_la_politica(test, idx_sel)
+valor_total = valor_por_cliente * n_sel
 
+col1, col2, col3 = st.columns(3)
+col1.metric("Clientes contactados", f"{n_sel:,} ({pct_contactar}%)")
+col2.metric("Valor neto incremental por cliente", f"${valor_por_cliente:+.2f}")
+col3.metric("Valor neto total acumulado", f"${valor_total:+,.2f}")
 
-# --- TODO: muestren la tabla de políticas (valor por cliente y total) para el % elegido ---
+st.divider()
 
+col_graf, col_tab = st.columns([1.2, 1])
 
-st.info("Reemplacen cada TODO con su propio código. Revisen el notebook del laboratorio para la lógica exacta de cada pieza.")
+# --- Curva Qini ---
+with col_graf:
+    st.subheader("1. Curva Qini del T-Learner")
+    
+    xs_uplift, ys_uplift = curva_qini(test, "uplift_estimado")
+    xs_riesgo, ys_riesgo = curva_qini(test, "prob_churn")
+    qini_uplift = coeficiente_qini(xs_uplift, ys_uplift, len(test))
+    qini_riesgo = coeficiente_qini(xs_riesgo, ys_riesgo, len(test))
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(xs_uplift, ys_uplift, color=GREEN, linewidth=2.5, label=f"T-learner (Qini={qini_uplift:+.3f})")
+    ax.plot(xs_riesgo, ys_riesgo, color=ORANGE, linewidth=2.5, label=f"Riesgo/churn (Qini={qini_riesgo:+.3f})")
+    ax.plot([0, 1], [0, ys_uplift[-1]], color=GRAY, linestyle="--", label="Al azar")
+    ax.axvline(x=pct_contactar / 100, color="red", linestyle=":", label=f"Corte ({pct_contactar}%)")
+    
+    ax.set_xlabel("% de la base contactada (prueba)")
+    ax.set_ylabel("Respuestas incrementales acumuladas")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+# --- Tabla de políticas del Paso 3 ---
+with col_tab:
+    st.subheader("2. Tabla de Políticas de Contacto")
+    
+    resultados = []
+    for pct in range(10, 101, 10):
+        nc_i = int(len(test) * pct / 100)
+        idx_i = test.sort_values("uplift_estimado", ascending=False).head(nc_i).index
+        v_cli, n_i = valor_de_la_politica(test, idx_i)
+        resultados.append({
+            "% Contactado": f"{pct}%",
+            "Clientes": n_i,
+            "Valor/Cliente ($)": round(v_cli, 2),
+            "Valor Total ($)": round(v_cli * n_i, 2)
+        })
+
+    tabla_politicas = pd.DataFrame(resultados)
+    st.dataframe(tabla_politicas, use_container_width=True, hide_index=True)
