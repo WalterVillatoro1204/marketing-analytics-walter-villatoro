@@ -1,10 +1,6 @@
 """
 Laboratorio Final — Starbucks Rewards
-PUNTO DE PARTIDA para su propia app de Streamlit. Complete los `# TODO`.
-
-El objetivo: una app donde alguien de negocio (que no sabe programar) pueda explorar sus
-resultados del laboratorio — el Qini de su T-learner y la tabla de políticas —
-con al menos un control interactivo.
+App de Streamlit interactiva para explorar Qini y tabla de políticas de contacto.
 
 Correr con:  streamlit run streamlit_starter.py
 """
@@ -26,15 +22,18 @@ FEATURES = ["recency_days", "frequency", "monetary", "email_open_rate", "tenure_
 
 @st.cache_data
 def load_data():
-    url = "https://raw.githubusercontent.com/WalterVillatoro1204/marketing-analytics-walter-villatoro/main/Semana_3/Tarea/data/uplift_campaign.csv"
-    return pd.read_csv(url)
+    try:
+        return pd.read_csv("data/uplift_campaign.csv")
+    except Exception:
+        url = "https://raw.githubusercontent.com/WalterVillatoro1204/marketing-analytics-walter-villatoro/main/Semana_3/Tarea/data/uplift_campaign.csv"
+        return pd.read_csv(url)
 
 
 @st.cache_data
 def entrenar_t_learner(df: pd.DataFrame, test_size: float, seed: int):
     train, test = train_test_split(df, test_size=test_size, random_state=seed, stratify=df["treatment_group"])
 
-    # TODO: entrenen el T-learner (dos modelos, igual que en el notebook)
+    # 1. Modelos del T-learner
     train_t = train[train["treatment_group"] == "treatment"]
     train_c = train[train["treatment_group"] == "control"]
     
@@ -46,6 +45,13 @@ def entrenar_t_learner(df: pd.DataFrame, test_size: float, seed: int):
     test["p_tratado"] = modelo_tratado.predict_proba(X_test)[:, 1]
     test["p_control"] = modelo_control.predict_proba(X_test)[:, 1]
     test["uplift_estimado"] = test["p_tratado"] - test["p_control"]
+
+    # 2. Modelo de riesgo/churn tradicional (para comparar en la Curva Qini)
+    train_churn = train.copy()
+    train_churn["churned"] = 1 - train_churn["responded_60d"]
+    modelo_riesgo = LogisticRegression(max_iter=1000).fit(train_churn[FEATURES], train_churn["churned"])
+    test["prob_churn"] = modelo_riesgo.predict_proba(X_test)[:, 1]
+
     return train, test
 
 
@@ -56,9 +62,36 @@ def valor_de_la_politica(test_df, seleccionados):
     return valor_tratado - valor_control, len(sel)
 
 
+def curva_qini(test_df, score_col, steps=40):
+    orden = test_df.sort_values(score_col, ascending=False).reset_index(drop=True)
+    es_tratado = (orden["treatment_group"] == "treatment").values
+    respondio = orden["responded_60d"].values
+    
+    acumulado_tratados = np.cumsum(np.where(es_tratado, respondio, 0))
+    acumulado_control = np.cumsum(np.where(~es_tratado, respondio, 0))
+    n_tratados_acum = np.cumsum(es_tratado)
+    n_control_acum = np.cumsum(~es_tratado)
+    
+    n = len(orden)
+    xs, ys = [0.0], [0.0]
+    for i in np.linspace(1, n, steps).astype(int):
+        nt, nc = n_tratados_acum[i - 1], n_control_acum[i - 1]
+        tasa_t = acumulado_tratados[i - 1] / nt if nt > 0 else 0
+        tasa_c = acumulado_control[i - 1] / nc if nc > 0 else 0
+        xs.append(i / n)
+        ys.append((tasa_t - tasa_c) * n)
+    return np.array(xs), np.array(ys)
+
+
+def coeficiente_qini(xs, ys, n):
+    area_modelo = np.trapezoid(ys, xs)
+    area_azar = np.trapezoid(np.linspace(0, ys[-1], len(xs)), xs)
+    return (area_modelo - area_azar) / n
+
+
 # --- Título y carga de datos ---
-st.title("Laboratorio Final — Starbucks Rewards")
-st.caption("TODO: escriban aquí una frase sobre qué decisión de negocio ayuda a tomar esta app.")
+st.title("☕ Laboratorio Final — Starbucks Rewards")
+st.caption("Esta app permite optimizar el presupuesto de marketing identificando qué porcentaje de clientes contactar para maximizar las ganancias netas de la campaña.")
 
 df = load_data()
 
@@ -72,6 +105,7 @@ with st.sidebar:
         value=40,
         step=10
     )
+    st.info("Ajusta el control deslizante para calcular la rentabilidad y el volumen de clientes en tiempo real.")
 
 train, test = entrenar_t_learner(df, test_size=0.30, seed=42)
 
