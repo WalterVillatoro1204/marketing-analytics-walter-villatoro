@@ -26,7 +26,8 @@ FEATURES = ["recency_days", "frequency", "monetary", "email_open_rate", "tenure_
 
 @st.cache_data
 def load_data():
-    return pd.read_csv("data/uplift_campaign.csv")
+    url = "https://raw.githubusercontent.com/WalterVillatoro1204/marketing-analytics-walter-villatoro/main/Semana_3/Tarea/data/uplift_campaign.csv"
+    return pd.read_csv(url)
 
 
 @st.cache_data
